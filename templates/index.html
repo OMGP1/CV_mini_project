@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrafficAI — Intelligent Signal Detection</title>
+    <meta name="description" content="Real-time traffic light detection system using computer vision with driving command assistance">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-0: #08090d;
+            --bg-1: #0f1117;
+            --bg-2: #161822;
+            --bg-3: #1e2030;
+            --bg-4: #272a3a;
+            --border-1: rgba(255,255,255,0.04);
+            --border-2: rgba(255,255,255,0.08);
+            --border-3: rgba(255,255,255,0.14);
+            --text-1: #f0f0f5;
+            --text-2: #a0a3b5;
+            --text-3: #6b6e82;
+            --text-4: #454860;
+            --red-500: #ef4444;
+            --red-400: #f87171;
+            --red-bg: rgba(239,68,68,0.08);
+            --red-border: rgba(239,68,68,0.20);
+            --yellow-500: #eab308;
+            --yellow-400: #facc15;
+            --yellow-bg: rgba(234,179,8,0.08);
+            --yellow-border: rgba(234,179,8,0.20);
+            --green-500: #22c55e;
+            --green-400: #4ade80;
+            --green-bg: rgba(34,197,94,0.08);
+            --green-border: rgba(34,197,94,0.20);
+            --blue-500: #6366f1;
+            --blue-400: #818cf8;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
+            --duration: 0.3s;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-0);
+            color: var(--text-1);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── SVG Icons ─────────────────────────────────── */
+        .icon {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+            flex-shrink: 0;
+        }
+        .icon-sm { width: 14px; height: 14px; }
+        .icon-lg { width: 22px; height: 22px; }
+        .icon-xl { width: 28px; height: 28px; }
+
+        /* ── Header ────────────────────────────────────── */
+        .header {
+            height: 56px;
+            padding: 0 1.5rem;
+            border-bottom: 1px solid var(--border-1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(8,9,13,0.9);
+            backdrop-filter: blur(16px) saturate(1.8);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--red-500), var(--yellow-500), var(--green-500));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .brand-icon svg { stroke: #fff; width: 18px; height: 18px; }
+
+        .brand-text {
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+        }
+
+        .brand-text span {
+            color: var(--text-3);
+            font-weight: 400;
+            font-size: 0.78rem;
+            margin-left: 0.4rem;
+        }
+
+        /* ── Tab Navigation ────────────────────────────── */
+        .tabs {
+            display: flex;
+            gap: 1px;
+            background: var(--bg-2);
+            border-radius: var(--radius-sm);
+            padding: 3px;
+        }
+
+        .tab {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            color: var(--text-3);
+            cursor: pointer;
+            transition: all var(--duration) var(--ease);
+            border: none;
+            background: none;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tab:hover { color: var(--text-2); }
+        .tab.active {
+            background: var(--bg-3);
+            color: var(--text-1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+        .tab .icon { width: 14px; height: 14px; }
+
+        /* ── Main Layout ───────────────────────────────── */
+        .main { max-width: 1380px; margin: 0 auto; padding: 1.25rem 1.5rem; }
+        .panel { display: none; }
+        .panel.active { display: block; animation: fadeUp 0.35s var(--ease); }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Cards ──────────────────────────────────────── */
+        .card {
+            background: var(--bg-1);
+            border: 1px solid var(--border-1);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            transition: border-color var(--duration) var(--ease);
+        }
+
+        .card:hover { border-color: var(--border-2); }
+
+        .card-header {
+            padding: 0.85rem 1.1rem;
+            border-bottom: 1px solid var(--border-1);
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--text-3);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-header .icon { width: 14px; height: 14px; opacity: 0.6; }
+        .card-body { padding: 1.1rem; }
+
+        /* ── Upload Zone ────────────────────────────────── */
+        .upload-zone {
+            border: 1.5px dashed var(--border-3);
+            border-radius: var(--radius-md);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--duration) var(--ease);
+            position: relative;
+        }
+
+        .upload-zone:hover {
+            border-color: var(--blue-500);
+            background: rgba(99,102,241,0.03);
+        }
+
+        .upload-zone.dragover {
+            border-color: var(--blue-400);
+            background: rgba(99,102,241,0.06);
+            transform: scale(1.005);
+        }
+
+        .upload-zone input[type="file"] {
+            position: absolute; inset: 0; opacity: 0; cursor: pointer;
+        }
+
+        .upload-zone .icon { width: 36px; height: 36px; color: var(--text-4); margin-bottom: 0.75rem; }
+        .upload-label { color: var(--text-2); font-size: 0.88rem; font-weight: 500; }
+        .upload-sub { color: var(--text-4); font-size: 0.72rem; margin-top: 0.3rem; }
+
+        /* ── Sample Chips ───────────────────────────────── */
+        .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 1rem; }
+
+        .chip {
+            padding: 5px 12px;
+            border-radius: 100px;
+            font-size: 0.72rem;
+            font-weight: 500;
+            background: var(--bg-2);
+            color: var(--text-3);
+            border: 1px solid var(--border-1);
+            cursor: pointer;
+            transition: all var(--duration) var(--ease);
+        }
+
+        .chip:hover {
+            background: var(--bg-3);
+            color: var(--text-1);
+            border-color: var(--border-2);
+            transform: translateY(-1px);
+        }
+
+        /* ── Grid ───────────────────────────────────────── */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+        @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+        /* ── Image Container ────────────────────────────── */
+        .img-frame {
+            width: 100%;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            background: var(--bg-2);
+        }
+        .img-frame img { width: 100%; height: auto; display: block; }
+
+        /* ── Command Banner ─────────────────────────────── */
+        .cmd-banner {
+            text-align: center;
+            padding: 1.4rem 1.5rem;
+            border-radius: var(--radius-lg);
+            margin-bottom: 1rem;
+            border: 1px solid;
+            transition: all 0.4s var(--ease);
+        }
+
+        .cmd-banner.red { background: var(--red-bg); border-color: var(--red-border); }
+        .cmd-banner.yellow { background: var(--yellow-bg); border-color: var(--yellow-border); }
+        .cmd-banner.green { background: var(--green-bg); border-color: var(--green-border); }
+        .cmd-banner.none { background: var(--bg-2); border-color: var(--border-1); }
+
+        .cmd-indicator {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            margin: 0 auto 0.6rem;
+            box-shadow: 0 0 12px currentColor;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from { box-shadow: 0 0 8px currentColor; }
+            to { box-shadow: 0 0 20px currentColor, 0 0 40px currentColor; }
+        }
+
+        .cmd-indicator.red { background: var(--red-500); color: var(--red-500); }
+        .cmd-indicator.yellow { background: var(--yellow-500); color: var(--yellow-500); }
+        .cmd-indicator.green { background: var(--green-500); color: var(--green-500); }
+        .cmd-indicator.none { background: var(--text-4); color: var(--text-4); animation: none; }
+
+        .cmd-text {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+        }
+
+        .cmd-text.red { color: var(--red-400); }
+        .cmd-text.yellow { color: var(--yellow-400); }
+        .cmd-text.green { color: var(--green-400); }
+        .cmd-text.none { color: var(--text-4); }
+
+        .cmd-sub {
+            font-size: 0.75rem;
+            color: var(--text-3);
+            margin-top: 0.3rem;
+        }
+
+        /* ── Stat Cards ─────────────────────────────────── */
+        .stat-tile {
+            background: var(--bg-2);
+            border-radius: var(--radius-md);
+            padding: 0.85rem;
+            text-align: center;
+            border: 1px solid var(--border-1);
+            transition: border-color var(--duration);
+        }
+
+        .stat-tile:hover { border-color: var(--border-2); }
+
+        .stat-label {
+            font-size: 0.62rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-4);
+            margin-bottom: 0.35rem;
+        }
+
+        .stat-val {
+            font-size: 1.4rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-val.red { color: var(--red-400); }
+        .stat-val.yellow { color: var(--yellow-400); }
+        .stat-val.green { color: var(--green-400); }
+
+        .stat-detail {
+            font-size: 0.68rem;
+            color: var(--text-4);
+            margin-top: 0.2rem;
+        }
+
+        /* ── Progress Bar ───────────────────────────────── */
+        .progress-bar {
+            display: flex;
+            border-radius: 6px;
+            overflow: hidden;
+            height: 8px;
+            margin-top: 0.75rem;
+            background: var(--bg-3);
+        }
+
+        .progress-segment {
+            transition: width 0.5s var(--ease);
+            min-width: 0;
+        }
+
+        .progress-segment.red { background: var(--red-500); }
+        .progress-segment.yellow { background: var(--yellow-500); }
+        .progress-segment.green { background: var(--green-500); }
+
+        .meta-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            color: var(--text-4);
+            margin-top: 0.6rem;
+        }
+
+        .pulse-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--green-500);
+            animation: pulseDot 1.5s ease infinite;
+        }
+
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* ── Accordion ──────────────────────────────────── */
+        .accordion-trigger {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.1rem;
+            cursor: pointer;
+            color: var(--text-3);
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-top: 1px solid var(--border-1);
+            transition: all var(--duration);
+            user-select: none;
+        }
+
+        .accordion-trigger:hover { color: var(--text-2); background: rgba(255,255,255,0.01); }
+        .accordion-trigger .chevron { transition: transform 0.25s var(--ease); }
+        .accordion-trigger.open .chevron { transform: rotate(90deg); }
+        .accordion-body { display: none; padding: 1rem; border-top: 1px solid var(--border-1); }
+        .accordion-body.open { display: block; animation: fadeUp 0.25s var(--ease); }
+
+        .mask-img {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 0.4rem;
+        }
+
+        .mask-label { font-size: 0.72rem; font-weight: 600; margin-bottom: 0.4rem; }
+        .mask-stat { font-size: 0.68rem; color: var(--text-4); }
+
+        /* ── Webcam ──────────────────────────────────────── */
+        .cam-frame {
+            position: relative;
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            background: #000;
+            aspect-ratio: 4/3;
+        }
+
+        .cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .cam-frame canvas { display: none; }
+
+        .cam-hud {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 1rem;
+            background: linear-gradient(transparent, rgba(0,0,0,0.85));
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .hud-cmd {
+            font-size: 1.2rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+        }
+
+        .hud-stats {
+            text-align: right;
+            font-size: 0.68rem;
+            color: rgba(255,255,255,0.45);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .cam-controls { display: flex; gap: 8px; margin-top: 0.75rem; }
+
+        /* ── Buttons ────────────────────────────────────── */
+        .btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--duration) var(--ease);
+            border: 1px solid var(--border-2);
+            background: var(--bg-2);
+            color: var(--text-1);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover { background: var(--bg-3); border-color: var(--border-3); transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+
+        .btn-primary { background: var(--blue-500); border-color: var(--blue-500); }
+        .btn-primary:hover { background: #5558e6; }
+
+        .btn-danger { background: rgba(239,68,68,0.12); border-color: var(--red-border); color: var(--red-400); }
+        .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+        .btn .icon { width: 14px; height: 14px; }
+
+        /* ── Empty State ────────────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+        }
+
+        .empty-state .icon { width: 48px; height: 48px; color: var(--text-4); margin-bottom: 1rem; opacity: 0.5; }
+        .empty-state .title { font-size: 1rem; font-weight: 500; color: var(--text-2); }
+        .empty-state .desc { font-size: 0.82rem; color: var(--text-4); margin-top: 0.3rem; }
+
+        /* ── Spinner ─────────────────────────────────────── */
+        .spinner {
+            width: 18px; height: 18px;
+            border: 2px solid var(--border-2);
+            border-top-color: var(--blue-500);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Scrollbar ───────────────────────────────────── */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+
+        /* ── Video Panel Styles ───────────────────────────── */
+        .video-stream-box {
+            aspect-ratio: 16/9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+
+        .video-stream-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── SVG Icon Sprites (hidden) ────────────────────── -->
+<svg style="display:none">
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+    <symbol id="i-bar-chart" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+    <symbol id="i-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+</svg>
+
+<!-- ── Header ──────────────────────────────────────── -->
+<header class="header">
+    <div class="header-brand">
+        <div class="brand-icon">
+            <svg class="icon"><use href="#i-shield"/></svg>
+        </div>
+        <div class="brand-text">TrafficAI <span>Computer Vision</span></div>
+    </div>
+    <div class="tabs">
+        <button class="tab active" data-tab="image">
+            <svg class="icon"><use href="#i-image"/></svg>Image
+        </button>
+        <button class="tab" data-tab="webcam">
+            <svg class="icon"><use href="#i-video"/></svg>Live Camera
+        </button>
+        <button class="tab" data-tab="video">
+            <svg class="icon"><use href="#i-film"/></svg>Video File
+        </button>
+    </div>
+</header>
+
+<!-- ── Main ────────────────────────────────────────── -->
+<main class="main">
+
+    <!-- ══ IMAGE PANEL ════════════════════════════════ -->
+    <div id="panel-image" class="panel active">
+        <div class="card" style="margin-bottom:1rem;">
+            <div class="card-body">
+                <div class="upload-zone" id="uploadArea">
+                    <input type="file" id="fileInput" accept="image/*">
+                    <svg class="icon" style="width:36px;height:36px;color:var(--text-4);margin-bottom:0.75rem;display:block;margin-left:auto;margin-right:auto;"><use href="#i-upload"/></svg>
+                    <div class="upload-label">Drop an image here or click to upload</div>
+                    <div class="upload-sub">JPG, PNG, BMP, WebP — Max 50 MB</div>
+                </div>
+                <div class="chips" id="samplesRow"></div>
+            </div>
+        </div>
+
+        <div id="imageResults" style="display:none;">
+            <div id="commandBadge" class="cmd-banner none">
+                <div class="cmd-indicator none" id="cmdDot"></div>
+                <div class="cmd-text none" id="cmdText">NO SIGNAL</div>
+                <div class="cmd-sub" id="cmdSub">Upload an image to detect</div>
+            </div>
+
+            <div class="grid-2" style="margin-bottom:1rem;">
+                <div class="card">
+                    <div class="card-header"><svg class="icon"><use href="#i-image"/></svg>Original</div>
+                    <div class="card-body" style="padding:0;">
+                        <div class="img-frame"><img id="originalImg" src="" alt="Original"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><svg class="icon"><use href="#i-target"/></svg>Detected</div>
+                    <div class="card-body" style="padding:0;">
+                        <div class="img-frame"><img id="annotatedImg" src="" alt="Detected"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:1rem;">
+                <div class="card-header"><svg class="icon"><use href="#i-bar-chart"/></svg>Detection Statistics</div>
+                <div class="card-body">
+                    <div class="grid-3">
+                        <div class="stat-tile">
+                            <div class="stat-label">Red</div>
+                            <div class="stat-val red" id="statRed">—</div>
+                            <div class="stat-detail" id="statRedSub">No detection</div>
+                        </div>
+                        <div class="stat-tile">
+                            <div class="stat-label">Yellow</div>
+                            <div class="stat-val yellow" id="statYellow">—</div>
+                            <div class="stat-detail" id="statYellowSub">No detection</div>
+                        </div>
+                        <div class="stat-tile">
+                            <div class="stat-label">Green</div>
+                            <div class="stat-val green" id="statGreen">—</div>
+                            <div class="stat-detail" id="statGreenSub">No detection</div>
+                        </div>
+                    </div>
+                    <div class="progress-bar" id="colorBar"></div>
+                    <div class="meta-line">
+                        <div class="pulse-dot"></div>
+                        <span id="processingTime">—</span>
+                    </div>
+                </div>
+
+                <div class="accordion-trigger" id="masksToggle">
+                    <svg class="icon icon-sm chevron"><use href="#i-chevron"/></svg>HSV Mask Visualization
+                </div>
+                <div class="accordion-body" id="masksContent">
+                    <div class="grid-3" id="masksGrid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+            <svg class="icon" style="width:48px;height:48px;color:var(--text-4);margin:0 auto 1rem;display:block;opacity:0.4;"><use href="#i-activity"/></svg>
+            <div class="title">Upload an image or select a sample</div>
+            <div class="desc">Detect traffic light colors using HSV thresholding and shape analysis</div>
+        </div>
+    </div>
+
+    <!-- ══ WEBCAM PANEL ═══════════════════════════════ -->
+    <div id="panel-webcam" class="panel">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><svg class="icon"><use href="#i-video"/></svg>Live Camera Feed</div>
+                <div class="card-body" style="padding:0;">
+                    <div class="cam-frame">
+                        <video id="webcamVideo" autoplay playsinline muted></video>
+                        <canvas id="webcamCanvas"></canvas>
+                        <div class="cam-hud">
+                            <div class="hud-cmd" id="hudCommand" style="color:var(--text-4);">NO SIGNAL</div>
+                            <div class="hud-stats">
+                                <div id="hudFps">— FPS</div>
+                                <div id="hudConf">—</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cam-controls" style="padding:0.85rem;">
+                        <button class="btn btn-primary" id="startCamBtn" onclick="startWebcam()">
+                            <svg class="icon"><use href="#i-play"/></svg>Start Camera
+                        </button>
+                        <button class="btn btn-danger" id="stopCamBtn" onclick="stopWebcam()" style="display:none;">
+                            <svg class="icon"><use href="#i-square"/></svg>Stop
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div id="liveCommandBadge" class="cmd-banner none" style="margin-bottom:0.85rem;">
+                    <div class="cmd-indicator none" id="liveCmdDot"></div>
+                    <div class="cmd-text none" id="liveCmdText">NO SIGNAL</div>
+                    <div class="cmd-sub" id="liveCmdSub">Start camera to begin detection</div>
+                </div>
+
+                <div class="card" style="margin-bottom:0.85rem;">
+                    <div class="card-header"><svg class="icon"><use href="#i-target"/></svg>Detection Output</div>
+                    <div class="card-body" style="padding:0;">
+                        <div class="img-frame">
+                            <img id="liveAnnotated" src="" alt="Detection" style="min-height:180px;background:var(--bg-2);">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><svg class="icon"><use href="#i-activity"/></svg>Live Metrics</div>
+                    <div class="card-body">
+                        <div class="grid-3">
+                            <div class="stat-tile">
+                                <div class="stat-label">Framerate</div>
+                                <div class="stat-val" id="liveFps" style="color:var(--blue-400);">—</div>
+                            </div>
+                            <div class="stat-tile">
+                                <div class="stat-label">Duration</div>
+                                <div class="stat-val" id="liveDuration" style="color:var(--text-1);">—</div>
+                            </div>
+                            <div class="stat-tile">
+                                <div class="stat-label">Regions</div>
+                                <div class="stat-val" id="liveDetections" style="color:var(--text-1);">—</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ VIDEO PANEL ════════════════════════════════ -->
+    <div id="panel-video" class="panel">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><svg class="icon"><use href="#i-upload"/></svg>Upload Video</div>
+                <div class="card-body">
+                    <div class="upload-zone" id="videoUploadArea">
+                        <input type="file" id="videoInput" accept="video/mp4,video/webm">
+                        <svg class="icon" style="width:36px;height:36px;color:var(--text-4);margin:0 auto 0.75rem;display:block;"><use href="#i-film"/></svg>
+                        <div class="upload-label">Drop a video file here</div>
+                        <div class="upload-sub">MP4, WebM — Max 100 MB</div>
+                    </div>
+                    <div id="videoProcessingInfo" style="display:none;margin-top:1rem;text-align:center;">
+                        <div class="spinner" style="margin:0 auto 0.5rem;"></div>
+                        <div style="color:var(--text-3);font-size:0.82rem;">Uploading and processing...</div>
+                    </div>
+                    <div style="margin-top:1rem;">
+                        <div class="stat-label" style="margin-bottom:0.5rem;">Search on YouTube or Pexels</div>
+                        <div style="color:var(--text-3);font-size:0.75rem;line-height:1.6;">
+                            "traffic light changing dashcam"<br>
+                            "traffic signal red green timelapse"<br>
+                            "driving through intersection POV"
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><svg class="icon"><use href="#i-target"/></svg>Annotated Output Stream</div>
+                <div class="card-body" style="padding:0;">
+                    <div class="video-stream-box">
+                        <img id="videoStreamImg" src="" alt="" style="display:none;">
+                        <div id="videoPlaceholder" style="color:var(--text-4);font-size:0.82rem;">No video loaded</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+// ── State ──────────────────────────────────────────
+let webcamStream = null;
+let webcamInterval = null;
+let isProcessing = false;
+
+// ── Tab Switching ──────────────────────────────────
+document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(`panel-${tab}`).classList.add('active');
+        if (tab !== 'webcam') stopWebcam();
+    });
+});
+
+// ── Load Samples ───────────────────────────────────
+async function loadSamples() {
+    try {
+        const res = await fetch('/api/samples');
+        const samples = await res.json();
+        document.getElementById('samplesRow').innerHTML = samples.map(s =>
+            `<button class="chip" onclick="loadSample('${s.filename}')">${s.name}</button>`
+        ).join('');
+    } catch(e) { console.error(e); }
+}
+
+async function loadSample(filename) {
+    const res = await fetch(`/api/sample/${filename}`);
+    const blob = await res.blob();
+    processFile(new File([blob], filename, { type: blob.type }));
+}
+
+// ── File Upload ────────────────────────────────────
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', e => { if (e.target.files[0]) processFile(e.target.files[0]); });
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+    e.preventDefault(); uploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+
+async function processFile(file) {
+    const fd = new FormData(); fd.append('image', file);
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('imageResults').style.display = 'none';
+    try {
+        const res = await fetch('/api/detect', { method: 'POST', body: fd });
+        displayResults(await res.json());
+    } catch(e) { console.error(e); }
+}
+
+// ── Display Results ────────────────────────────────
+function displayResults(data) {
+    const results = document.getElementById('imageResults');
+    results.style.display = 'block';
+    results.style.animation = 'none';
+    results.offsetHeight; // force reflow
+    results.style.animation = 'fadeUp 0.35s var(--ease)';
+
+    const color = data.dominant_color || null;
+    const cls = color ? color.toLowerCase() : 'none';
+    const cmds = { Red:'STOP', Yellow:'GET READY', Green:'MOVE AHEAD' };
+
+    document.getElementById('commandBadge').className = `cmd-banner ${cls}`;
+    document.getElementById('cmdDot').className = `cmd-indicator ${cls}`;
+    const cmdT = document.getElementById('cmdText');
+    cmdT.className = `cmd-text ${cls}`;
+    cmdT.textContent = cmds[color] || 'NO SIGNAL';
+
+    const conf = data.detections.length > 0 ? data.detections[0].confidence : 0;
+    document.getElementById('cmdSub').textContent =
+        color ? `${color} light detected · ${conf}% confidence` : 'No traffic light detected';
+
+    document.getElementById('originalImg').src = `data:image/jpeg;base64,${data.original_image}`;
+    document.getElementById('annotatedImg').src = `data:image/jpeg;base64,${data.annotated_image}`;
+
+    for (const c of ['Red','Yellow','Green']) {
+        const s = data.stats[c];
+        const el = document.getElementById(`stat${c}`);
+        const sub = document.getElementById(`stat${c}Sub`);
+        if (s.count > 0) {
+            el.textContent = `${s.max_confidence}%`;
+            sub.textContent = `${s.count} region${s.count>1?'s':''} · ${Math.round(s.total_area).toLocaleString()} px`;
+        } else { el.textContent = '—'; sub.textContent = 'No detection'; }
+    }
+
+    const total = Object.values(data.stats).reduce((s,v) => s + v.total_area, 0);
+    const bar = document.getElementById('colorBar');
+    if (total > 0) {
+        bar.innerHTML = ['Red','Yellow','Green'].map(c => {
+            const pct = (data.stats[c].total_area / total) * 100;
+            return pct > 0 ? `<div class="progress-segment ${c.toLowerCase()}" style="width:${pct}%"></div>` : '';
+        }).join('');
+    } else { bar.innerHTML = ''; }
+
+    document.getElementById('processingTime').textContent = `Processed in ${data.processing_time_ms} ms`;
+
+    document.getElementById('masksGrid').innerHTML = ['Red','Yellow','Green'].map(c => {
+        const m = data.masks[c]; if (!m) return '';
+        return `
+            <div>
+                <div class="mask-label" style="color:var(--${c.toLowerCase()}-400);">${c}</div>
+                <img class="mask-img" src="data:image/jpeg;base64,${m.raw}" alt="${c} raw">
+                <img class="mask-img" src="data:image/jpeg;base64,${m.filtered}" alt="${c} filtered">
+                <div class="mask-stat">Raw: ${m.raw_pixels.toLocaleString()} px</div>
+                <div class="mask-stat">Filtered: ${m.filtered_pixels.toLocaleString()} px</div>
+            </div>`;
+    }).join('');
+}
+
+// ── Accordion ──────────────────────────────────────
+document.getElementById('masksToggle').addEventListener('click', () => {
+    document.getElementById('masksToggle').classList.toggle('open');
+    document.getElementById('masksContent').classList.toggle('open');
+});
+
+// ── Webcam ─────────────────────────────────────────
+async function startWebcam() {
+    try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode:'environment', width:640, height:480 }
+        });
+        document.getElementById('webcamVideo').srcObject = webcamStream;
+        document.getElementById('startCamBtn').style.display = 'none';
+        document.getElementById('stopCamBtn').style.display = 'inline-flex';
+        await fetch('/api/reset_commands', { method:'POST' });
+        webcamInterval = setInterval(processFrame, 200);
+    } catch(e) { alert('Camera access denied.'); }
+}
+
+function stopWebcam() {
+    if (webcamInterval) clearInterval(webcamInterval);
+    if (webcamStream) { webcamStream.getTracks().forEach(t => t.stop()); webcamStream = null; }
+    document.getElementById('startCamBtn').style.display = 'inline-flex';
+    document.getElementById('stopCamBtn').style.display = 'none';
+    document.getElementById('webcamVideo').srcObject = null;
+}
+
+async function processFrame() {
+    if (isProcessing) return;
+    isProcessing = true;
+    const v = document.getElementById('webcamVideo');
+    const c = document.getElementById('webcamCanvas');
+    c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+    c.getContext('2d').drawImage(v, 0, 0);
+    const t0 = performance.now();
+    try {
+        const res = await fetch('/api/detect_frame', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ image: c.toDataURL('image/jpeg', 0.7) }),
+        });
+        const d = await res.json();
+        const fps = Math.round(1000 / (performance.now() - t0));
+        const cmd = d.command;
+        const cv = cmd.color ? `var(--${cmd.color.toLowerCase()}-400)` : 'var(--text-4)';
+        const cls = cmd.color ? cmd.color.toLowerCase() : 'none';
+
+        document.getElementById('hudCommand').textContent = cmd.text;
+        document.getElementById('hudCommand').style.color = cv;
+        document.getElementById('hudFps').textContent = `${fps} FPS`;
+        document.getElementById('hudConf').textContent = cmd.confidence > 0 ? `${cmd.confidence}%` : '';
+
+        if (d.annotated_image) document.getElementById('liveAnnotated').src = `data:image/jpeg;base64,${d.annotated_image}`;
+
+        document.getElementById('liveCommandBadge').className = `cmd-banner ${cls}`;
+        document.getElementById('liveCmdDot').className = `cmd-indicator ${cls}`;
+        const lt = document.getElementById('liveCmdText');
+        lt.className = `cmd-text ${cls}`; lt.textContent = cmd.text;
+        document.getElementById('liveCmdSub').textContent =
+            cmd.confidence > 0 ? `${cmd.confidence}% confidence · ${cmd.duration}s` : 'Scanning...';
+
+        document.getElementById('liveFps').textContent = fps;
+        document.getElementById('liveDuration').textContent = `${cmd.duration}s`;
+        document.getElementById('liveDetections').textContent = d.detection_count;
+    } catch(e) { console.error(e); }
+    isProcessing = false;
+}
+
+// ── Video Upload ───────────────────────────────────
+const videoArea = document.getElementById('videoUploadArea');
+const videoInput = document.getElementById('videoInput');
+videoInput.addEventListener('change', e => { if (e.target.files[0]) processVideo(e.target.files[0]); });
+videoArea.addEventListener('dragover', e => { e.preventDefault(); videoArea.classList.add('dragover'); });
+videoArea.addEventListener('dragleave', () => videoArea.classList.remove('dragover'));
+videoArea.addEventListener('drop', e => {
+    e.preventDefault(); videoArea.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) processVideo(e.dataTransfer.files[0]);
+});
+
+async function processVideo(file) {
+    const fd = new FormData(); fd.append('video', file);
+    document.getElementById('videoProcessingInfo').style.display = 'block';
+    try {
+        const res = await fetch('/api/upload_video', { method:'POST', body: fd });
+        const data = await res.json();
+        document.getElementById('videoProcessingInfo').style.display = 'none';
+        if (data.stream_url) {
+            document.getElementById('videoPlaceholder').style.display = 'none';
+            const img = document.getElementById('videoStreamImg');
+            img.style.display = 'block';
+            img.src = data.stream_url;
+        }
+    } catch(e) { console.error(e); document.getElementById('videoProcessingInfo').style.display = 'none'; }
+}
+
+// ── Init ───────────────────────────────────────────
+loadSamples();
+</script>
+</body>
+</html>
